@@ -1,13 +1,13 @@
 # Experiment mit MQTT und ESP32
 
 In diesem Experiment wurde eine Mosquitto (MQTT) Broker auf einem Ubuntu System aufgesetzt.
-Auf dem Ubuntu System wurde ein Subscriber mittels mosquitto_sub ausgesetzt, um die eigehenden Nachrichten empfangen zu können.
+Es wurde ein lokaler Subscriber mittels mosquitto_sub ausgesetzt, um die eigehenden Nachrichten empfangen zu können.
 
 Auf einem ESP32 wurde ein Erschütterungssensor, mittels Piezo Element und ein HC-SR04 Abstandssensor aufgesetzt. 
 Dabei sendet der Erschütterungssensor eine Nachricht mit dem Topic "esp32/tap", wenn eine Erschütterung erkannt wurde.
 Der Abstandssensor ist so konfiguriert, dass die Mikrosekunden gezählt werden, die zwischen einem emmitiertem Ultraschallimpuls und dem Empfang selbigem vergangen sind.
 Es werden 10 Messungen vorgenommen. Die Messwerte werden dann aufsteigend sortiert und es wird die differenz zwischen dem größten und dem kleinsten Messwert genommen.
-Ist die Differenz größer als ein definierter Treshold, wird eine Nachricht mit dem Topic "esp32/ultrasonic" und dem Differenzwert als Nachricht gesendet.
+Ist die Differenz größer als ein definierter Threshold, wird eine Nachricht mit dem Topic "esp32/ultrasonic" und dem Differenzwert als Nachricht gesendet.
 Der Abstandssensor wird somit als Bewegungssensor verwendet.
 
 ## Mosquitto Broker Installation auf Ubuntu 
