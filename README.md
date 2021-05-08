@@ -19,13 +19,13 @@ apt-get install mosquitto-clients
 apt clean
 ```
 
-### Debug Subscriber, der alle Nachrichten abfängt
+#### Debug Subscriber, der alle Nachrichten abfängt
   - ```-h``` für host
   - ```-v``` für verbose outout
   - ```-t``` topic, dass abboniert werden soll. '#' als Wildcard für alle Topics
   - Command: ```mosquitto_sub -h localhost -v -t "#"```
 
-### Senden einer lokalen Testnachricht "XXX" mit dem Topic "test/pling"
+#### Senden einer lokalen Testnachricht "XXX" mit dem Topic "test/pling"
   - ```-h``` für host
   - ```-t``` für topic 
   - ```-m``` für die gesendete Nachricht
