@@ -1,0 +1,82 @@
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <Wire.h>
+
+hw_timer_t *timer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+
+#define NUM_LEDS 6
+#define MODE_FALL 0
+#define MODE_RISE 1
+
+uint8_t led_gpio_pins[] = {15,2,4,16,22,23};
+
+typedef struct {
+  uint8_t mode;
+  uint8_t brightness;
+  uint8_t step;
+} LedState;
+
+LedState led_states[NUM_LEDS];
+
+#define PWM_FREQUENCY 5000
+#define PWM_RESOLUTION 8
+
+boolean increase(uint8_t led);
+boolean decrease(uint8_t led);
+void IRAM_ATTR onTimer();
+
+void setup() {
+  Serial.begin(115200);
+  srand(time(NULL));
+  // there are 16 PWM channels in total. i must not exeed 15!
+  for(uint8_t i = 0; i < NUM_LEDS; i++) {
+    ledcSetup(i, PWM_FREQUENCY, PWM_RESOLUTION);
+    ledcAttachPin(led_gpio_pins[i], i);
+    led_states[i] = {MODE_FALL, 0, 1};
+  }
+  timer = timerBegin(0, 80, true);
+  timerAttachInterrupt(timer, &onTimer, true);
+  //1000000 is one sec
+  timerAlarmWrite(timer, 300000, true);
+  timerAlarmEnable(timer);
+}
+
+void loop() {
+  for(uint8_t i = 0; i < NUM_LEDS; i++) {
+    boolean changed = false;
+    if(led_states[i].mode == MODE_FALL) {
+      changed = decrease(i);
+    } else {
+      changed = increase(i);
+    }
+    if(changed) {
+      ledcWrite(i, led_states[i].brightness);
+    }
+  }
+    delay(10);
+}
+
+boolean increase(uint8_t led) {
+  uint8_t oldval = led_states[led].brightness;
+  portENTER_CRITICAL(&timerMux);
+  led_states[led].brightness = min(led_states[led].brightness+led_states[led].step, 255);
+  portEXIT_CRITICAL(&timerMux);
+  return led_states[led].brightness != oldval;
+}
+
+boolean decrease(uint8_t led) {
+  uint8_t oldval = led_states[led].brightness;
+  portENTER_CRITICAL(&timerMux);
+  led_states[led].brightness = max(led_states[led].brightness-led_states[led].step, 0);
+  portEXIT_CRITICAL(&timerMux);
+  return led_states[led].brightness != oldval;
+}
+
+void IRAM_ATTR onTimer(){
+  uint8_t led = rand() % NUM_LEDS;
+  portENTER_CRITICAL(&timerMux);
+  led_states[led].brightness = 255;
+  portEXIT_CRITICAL(&timerMux);
+  //printf("hallo welt");
+}

@@ -1,115 +1,133 @@
-#include <WiFi.h>
-#include <PubSubClient.h>
-#include <Wire.h>
+#include <main.h>
 
-//shock sensor and led
-#define IN_PIN 12
-#define OUT_PIN 14
-#define DELAY 30
-volatile byte lastState = LOW;
-volatile byte state = LOW;
-volatile uint32_t lastInMillis;
-unsigned int numTaps = 0;
+TaskHandle_t Core1TaskHnd;
+uint8_t led_gpio_pins[] = {23, 22, 16, 4, 2, 15};
+struct Lamp led_states[NUM_LEDS];
 
-//ultrasonic
-#define PIN_TRIGGER 27
-#define PIN_ECHO 26
-#define NUM_SAMPLES 10
-#define DIFF_THRESHOLD 100
+#define POT_IN 32
+#define NUM_SAMPLES 20
+// is 1023 because we left shift 2 bits while sampling
+#define POT_MAL_VAL 1023
+#define SPEED_MAX_VAL 12
 
-//networking
-#define WIFI_SSID "<wifi_ssid>"
-#define WIFI_PASSWORD "<wifi_password_here>"
-#define MQTT_SERVER "<hostname_of_mosquitto_server>"
-#define MQTT_PORT 1883
-char msg[64];
+#define B_1 33
+#define B_2 25
+#define B_3 26
+#define B_4 27
+#define B_5 14
+#define B_6 12
 
-WiFiClient espClient;
-PubSubClient client(espClient);
+hw_timer_t *poti_read_timer = NULL;
+volatile double speedMultiplier = 1;
 
-void setup_wifi();
-void reconnect();
-void blink();
-unsigned long sampleUltrasonic();
-
-void setup() {
-  Serial.begin(115200);
-  pinMode(OUT_PIN,OUTPUT);
-  digitalWrite(OUT_PIN, LOW);
-  pinMode(IN_PIN, INPUT);
-  pinMode(PIN_TRIGGER, OUTPUT);
-  pinMode(PIN_ECHO, INPUT);
-  attachInterrupt(IN_PIN, blink, RISING);
-  setup_wifi();
-  client.setServer(MQTT_SERVER, MQTT_PORT);
+void scaledDelayMs(uint32_t ms) {
+    delay(ms/speedMultiplier);
 }
 
-void loop() {
-  if (!client.connected()) {
-    reconnect();
-  }
-  client.loop();
-
-  unsigned long ultrasonicDiff = sampleUltrasonic();
-  if(ultrasonicDiff > DIFF_THRESHOLD) {
-    sprintf(msg, "%lu", ultrasonicDiff);
-    client.publish("esp32/ultrasonic", msg);
-    delay(20);
-  }
-
-  if(state != lastState) {
-    lastState = state;
-    digitalWrite(OUT_PIN, state);
-    sprintf(msg, "tap %u received", ++numTaps);
-    client.publish("esp32/tap", msg);
-  }
-}
-
-void blink() {
-  if (millis() > lastInMillis + DELAY || lastInMillis > millis()) {
-    state = !state;
-    lastInMillis = millis();
-  }
-}
-
-void setup_wifi() {
-  Serial.printf("Connecting to %s", WIFI_SSID);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.printf("WiFi connected\nIP address: %s\n", WiFi.localIP().toString().c_str());
-}
-
-void reconnect() {
-  while (!client.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    if (client.connect("ESP32_Client")) {
-      Serial.println("MQTT connected");
-    } else {
-      Serial.printf("failed, rc=%d\n", client.state());
-      Serial.println("Trying again in 5 seconds");
-      delay(5000);
+void IRAM_ATTR poti_read(){
+    uint32_t sum = 0;
+    for(uint16_t i = 0; i < NUM_SAMPLES; i++) {
+        sum += analogRead(POT_IN);
     }
-  }
+    speedMultiplier = 1 + ((double)((sum/NUM_SAMPLES)>>2) / POT_MAL_VAL) * SPEED_MAX_VAL;
 }
 
-unsigned long sampleUltrasonic()
+uint8_t mode = MODE_0;
+
+uint8_t getMode() {
+    return mode;
+}
+
+void IRAM_ATTR isr_b1() {
+    mode = MODE_0;
+}
+
+void IRAM_ATTR isr_b2() {
+    mode = MODE_1;
+}
+
+void IRAM_ATTR isr_b3() {
+    mode = MODE_2;
+}
+
+void IRAM_ATTR isr_b4() {
+    mode = MODE_3;
+}
+
+void IRAM_ATTR isr_b5() {
+    mode = MODE_4;
+}
+
+void IRAM_ATTR isr_b6() {
+    mode = MODE_5;
+}
+
+void setup()
 {
-  unsigned long samples[NUM_SAMPLES];
-  for (int i = 0; i < NUM_SAMPLES; i++)
-  {
-    digitalWrite(PIN_TRIGGER, LOW);
-    delayMicroseconds(2);
+    Serial.begin(115200);
 
-    digitalWrite(PIN_TRIGGER, HIGH);
-    delayMicroseconds(10);
+    pinMode(B_1, INPUT_PULLUP);
+    attachInterrupt(B_1, isr_b1, FALLING);
+    pinMode(B_2, INPUT_PULLUP);
+    attachInterrupt(B_2, isr_b2, FALLING);
+    pinMode(B_3, INPUT_PULLUP);
+    attachInterrupt(B_3, isr_b3, FALLING);
+    pinMode(B_4, INPUT_PULLUP);
+    attachInterrupt(B_4, isr_b4, FALLING);
+    pinMode(B_5, INPUT_PULLUP);
+    attachInterrupt(B_5, isr_b5, FALLING);
+    pinMode(B_6, INPUT_PULLUP);
+    attachInterrupt(B_6, isr_b6, FALLING);
 
-    samples[i] = pulseIn(PIN_ECHO, HIGH);
-    delay(10);
-  }
+    poti_read_timer = timerBegin(0, 80, true);
+    timerAttachInterrupt(poti_read_timer, &poti_read, true);
+    timerAlarmWrite(poti_read_timer, 200000, true);
+    timerAlarmEnable(poti_read_timer);
 
-  std::sort(samples, samples + NUM_SAMPLES);
-  return samples[NUM_SAMPLES - 1] - samples[0];
+    //  there are 16 PWM channels in total. i must not exeed 15!
+    for (uint8_t i = 0; i < NUM_LEDS; i++)
+    {
+        ledcSetup(i, PWM_FREQUENCY, PWM_RESOLUTION);
+        ledcAttachPin(led_gpio_pins[i], i);
+    }
+
+    xTaskCreatePinnedToCore(CoreTask1, "CPU_1", 1000, NULL, 1, &Core1TaskHnd, 1);
+}
+
+void loop()
+{
+    for (uint8_t i = 0; i < NUM_LEDS; i++)
+    {
+        boolean changed = false;
+        struct Lamp* lamp = &led_states[i];
+        if (lamp->counter > 0)
+        {
+            lamp->counter--;
+            continue;
+        }
+        if (lamp->level > lamp->target)
+        {
+            lamp->level--;
+            lamp->counter = lamp->counter_start / speedMultiplier;
+            changed = true;
+        }
+        else if (lamp->level < lamp->target)
+        {
+            lamp->level++;
+            lamp->counter = lamp->counter_start / speedMultiplier;
+            changed = true;
+        }
+
+        if(changed || ledcRead(i) != lamp->level) 
+        {
+            ledcWrite(i, lamp->level);
+        }
+    }
+}
+
+void setLed(uint8_t led, uint8_t level, uint8_t target, uint16_t counter_start) {
+  led_states[led].target = target;
+  led_states[led].level = level;
+  led_states[led].counter = 0;
+  led_states[led].counter_start = counter_start;
 }

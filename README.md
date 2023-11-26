@@ -8,6 +8,9 @@ Der Abstandssensor ist so konfiguriert, dass die Mikrosekunden gezählt werden, 
 Es werden 10 Einzelmessungen vorgenommen, welche dann aufsteigend sortiert werden. Zuletzt wird die Differenz zwischen dem größten und dem kleinsten Messwert genommen. Ist die Differenz größer als ein definierter Threshold, wird eine Nachricht mit dem Topic "esp32/ultrasonic" und dem Differenzwert als Nachricht gesendet.
 Der Abstandssensor wird somit als Bewegungssensor verwendet.
 
+<img src="resources/piezo_shock_sensor_schematic.png">
+<img src="resources/setup.jpg">
+
 ## Mosquitto Broker Installation auf Ubuntu 
 ```
 apt-add-repository ppa:mosquitto-dev/mosquitto-ppa
